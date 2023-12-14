@@ -1,0 +1,126 @@
+- hosts: all   #localhost   #"{{ ip }}"
+  become: yes
+  vars_files:
+    - vars_file.yml   # vars_file.ymlで変数を定義
+
+  tasks:
+  - name: Yum update at hosts
+    yum:
+      name: '*'
+      state: latest
+    async: 1000
+    poll: 1
+    register: yum_sleeper
+
+  - name: Install Lamp-server
+    shell:
+      amazon-linux-extras install -y lamp-mariadb10.2-php7.2 php7.2
+
+
+  - name: Install Apache and MariaDB packages from AppStream
+    yum:
+      name: ['httpd', 'mariadb', 'mariadb-common', 'mariadb-server', 'mariadb-server-utils', 'mariadb-backup', 'MySQL-python', 'php-gd']
+
+  - name: Start and enable Httpd and Mariadb
+    systemd:
+      state: started
+      enabled: yes
+      name: "{{ item }}"
+    with_items:
+      - mariadb
+      - httpd
+
+  - name: download wordpress
+    get_url:
+      url: https://wordpress.org/latest.tar.gz
+      dest: ./
+
+  - name: wordpress arcfile unpack
+    unarchive:
+      src: ./latest.tar.gz
+      dest: ./
+
+  - name: shell
+    shell: |
+      usermod -a -G apache ec2-user
+      cp ./wordpress/wp-config-sample.php ./wordpress/wp-config.php
+
+  - name: file test
+    file:
+      path: /var/www
+      owner: apache
+      group: apache
+      mode: 2775
+
+  - name: shell
+    shell: |
+      find /var/www -type d -exec chmod 2775 {} \;
+      find /var/www -type f -exec chmod 0644 {} \;
+      cp -r ./wordpress/* /var/www/html/
+      [ -f /etc/httpd/conf/httpd.conf.bak ] || cp /etc/httpd/conf/httpd.conf{,.bak}
+      [ -f /var/www/html/wp-config.php.bak ] || cp /var/www/html/wp-config.php{,.bak}
+      sed -i '151s/AllowOverride None/AllowOverride All/' /etc/httpd/conf/httpd.conf
+
+  - name: restart mariadb httpd
+    systemd:
+      state: restarted
+      name: "{{ item }}"
+    with_items:
+      - httpd
+      - mariadb
+
+  - name: Create Database
+    mysql_db:
+      login_unix_socket: /var/lib/mysql/mysql.sock
+      login_user: root
+      login_password: "{{ mysql_root_password }}"
+      name: "{{ db_name }}"
+      state: present
+      encoding: utf8mb4
+      collation: utf8mb4_general_ci
+
+  - name: Create Database User
+    mysql_user:
+      login_unix_socket: /var/lib/mysql/mysql.sock
+      login_user: root
+      login_password:  "{{ mysql_root_password }}"
+      name: "{{ db_user_name }}"
+      password: "{{ db_user_password }}"
+      host: "{{ db_hostname }}"
+      priv: '*.*:ALL'
+      state: present
+
+  - name: lineinfile wp-config.php
+    lineinfile:
+      path: /var/www/html/wp-config.php
+      backrefs: yes
+      state: present
+      regexp: '(.*)database_name_here(.*)'
+      line: '\1{{ db_name }}\2'
+
+  - name: lineinfile wp-config.php
+    lineinfile:
+      path: /var/www/html/wp-config.php
+      backrefs: yes
+      state: present
+      regexp: '(.*)username_here(.*)'
+      line: '\1{{ db_user_name }}\2'
+
+  - name: lineinfile wp-config.php
+    lineinfile:
+      path: /var/www/html/wp-config.php
+      backrefs: yes
+      state: present
+      regexp: '(.*)password_here(.*)'
+      line: '\1{{ db_user_password }}\2'
+
+  - name: lineinfile wp-config.php
+    lineinfile:
+      path: /var/www/html/wp-config.php
+      backrefs: yes
+      state: present
+      regexp: '(.*)localhost(.*)'
+      line: '\1{{ db_hostname }}\2'
+
+
+
