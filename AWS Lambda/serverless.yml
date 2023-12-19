@@ -1,0 +1,121 @@
+service: udemy-aws-lambda
+# app and org for use with dashboard.serverless.com
+#app: your-app-name
+#org: your-org-name
+frameworkVersion: '3'
+
+# Add the serverless-webpack plugin
+plugins:
+  - serverless-webpack
+  - serverless-iam-roles-per-function
+  - serverless-api-gateway-throttling
+  - serverless-s3-sync
+
+custom:
+  apiGatewayThrottling:
+    maxRequestsPerSecond: 10
+    maxConcurrentRequests: 5
+  bucketName: takuan0216-bucket-lambda
+  s3Sync:
+    buckets:
+      - bucketName: ${self:custom.bucketName}
+        localDir: static
+
+provider:
+  name: aws
+  runtime: nodejs16.x
+  region: ap-northeast-1
+  httpApi:
+    cors:
+      allowedOrigins:
+        - 'https://${self:custom.bucketName}.s3.ap-northeast-1.amazonaws.com'
+
+functions:
+  first:
+    handler: first.hello
+
+  hello:
+    handler: src/hello.handler
+    events:
+      - httpApi:
+          method: get
+          path: /hello
+
+  costNotifier:
+    handler: src/costNotifier.handler
+    events:
+      # 日本時間で毎朝9時
+      - schedule: cron(0 0 * * ? *)
+    environment:
+      SLACK_WEBHOOK_URL: ${ssm:UDEMY_AWS_LAMBDA_SLACK_WEBHOOK_URL}
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - ce:GetCostAndUsage
+        Resource: '*'
+
+  taskList:
+    handler: src/taskHandler.list
+    events:
+      - httpApi:
+          method: get
+          path: /tasks
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Scan
+        Resource: 'arn:aws:dynamodb:*:*:table/tasks'
+
+  taskPost:
+    handler: src/taskHandler.post
+    events:
+      - httpApi:
+          method: post
+          path: /tasks
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:PutItem
+        Resource: 'arn:aws:dynamodb:*:*:table/tasks'
+
+resources:
+  Resources:
+    TasksDynamoDBTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: tasks
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 5
+          WriteCapacityUnits: 5
+
+    StaticSiteS3Bucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:custom.bucketName}
+        PublicAccessBlockConfiguration:
+          BlockPublicAcls: false
+          BlockPublicPolicy: false
+          IgnorePublicAcls: false
+          RestrictPublicBuckets: false
+        WebsiteConfiguration:
+          IndexDocument: index.html
+    StaticSiteS3BucketPolicy:
+      Type: AWS::S3::BucketPolicy
+      Properties:
+        Bucket:
+          Ref: StaticSiteS3Bucket
+        PolicyDocument:
+          Statement:
+            - Sid: PublicReadGetObject
+              Effect: Allow
+              Principal: '*'
+              Action:
+                - s3:GetObject
+              Resource: 'arn:aws:s3:::${self:custom.bucketName}/*'
+
