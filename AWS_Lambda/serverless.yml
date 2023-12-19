@@ -31,16 +31,6 @@ provider:
         - 'https://${self:custom.bucketName}.s3.ap-northeast-1.amazonaws.com'
 
 functions:
-  first:
-    handler: first.hello
-
-  hello:
-    handler: src/hello.handler
-    events:
-      - httpApi:
-          method: get
-          path: /hello
-
   costNotifier:
     handler: src/costNotifier.handler
     events:
