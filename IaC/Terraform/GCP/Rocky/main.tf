@@ -37,7 +37,7 @@ resource "google_compute_instance" "default" {
   }
 
   # Install nginx
-  metadata_startup_script = "sudo apt-get update; sudo apt-get install -yq build-essential python3-pip rsync; pip install flask"
+  metadata_startup_script = "sudo yum update; sudo yum -y install nginx; sudo systemctl start nginx; sudo systemctl enable nginx"
 
   network_interface {
     subnetwork = google_compute_subnetwork.default.id
@@ -61,13 +61,13 @@ resource "google_compute_firewall" "ssh" {
   target_tags   = ["ssh"]
 }
 
-resource "google_compute_firewall" "flask" {
-  name    = "flask-app-firewall"
+resource "google_compute_firewall" "nginx" {
+  name    = "nginx-firewall"
   network = google_compute_network.vpc_network.id
 
   allow {
     protocol = "tcp"
-    ports    = ["5000"]
+    ports    = ["80"]
   }
   source_ranges = ["0.0.0.0/0"]
 }
