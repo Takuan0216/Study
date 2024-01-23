@@ -10,12 +10,14 @@ variable "project_id" {
 	default = ""
 }
 
+#VPC作成
 resource "google_compute_network" "vpc_network" {
   name                    = "my-custom-mode-network"
   auto_create_subnetworks = false
   mtu                     = 1460
 }
 
+#サブネット作成
 resource "google_compute_subnetwork" "default" {
   name          = "my-custom-subnet"
   ip_cidr_range = "10.0.1.0/24"
@@ -23,10 +25,10 @@ resource "google_compute_subnetwork" "default" {
   network       = google_compute_network.vpc_network.id
 }
 
-# Create a single Compute Engine instance
+# Rocky OSのGCE作成
 resource "google_compute_instance" "default" {
-  name         = "rockey-vm"
-  machine_type = "e2-micro"
+  name         = "rockey-nginx-vm"
+  machine_type = "e2-medium"
   zone         = "asia-northeast1-a"
   tags         = ["ssh"]
 
@@ -36,7 +38,7 @@ resource "google_compute_instance" "default" {
     }
   }
 
-  # Install nginx
+  # nginxインストール・起動
   metadata_startup_script = "sudo yum update; sudo yum -y install nginx; sudo systemctl start nginx; sudo systemctl enable nginx"
 
   network_interface {
@@ -48,6 +50,7 @@ resource "google_compute_instance" "default" {
   }
 }
 
+# SSH接続を許可するファイアウォール作成
 resource "google_compute_firewall" "ssh" {
   name = "allow-ssh"
   allow {
@@ -61,6 +64,7 @@ resource "google_compute_firewall" "ssh" {
   target_tags   = ["ssh"]
 }
 
+# HTTP接続を許可するファイアウォール作成
 resource "google_compute_firewall" "nginx" {
   name    = "nginx-firewall"
   network = google_compute_network.vpc_network.id
@@ -72,7 +76,7 @@ resource "google_compute_firewall" "nginx" {
   source_ranges = ["0.0.0.0/0"]
 }
 
-// A variable for extracting the external IP address of the VM
+# 接続用のURL出力
 output "Web-server-URL" {
- value = join("",["http://",google_compute_instance.default.network_interface.0.access_config.0.nat_ip,":5000"])
+ value = join("",["http://",google_compute_instance.default.network_interface.0.access_config.0.nat_ip])
 }
